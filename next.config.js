@@ -2,10 +2,12 @@
 const nextConfig = {
   reactStrictMode: true,
   images: {
-    domains: ['localhost', 'res.cloudinary.com'],
+    domains: ['62.72.16.124']
   },
   experimental: {
-    serverActions: true,
+    serverActions: {
+      bodySizeLimit: '2mb'
+    }
   },
   env: {
     APP_URL: process.env.APP_URL,
@@ -27,6 +29,10 @@ const nextConfig = {
       },
     ]
   },
+  server: {
+    hostname: '62.72.16.124',
+    port: 3000
+  }
 };
 
 module.exports = nextConfig; 
