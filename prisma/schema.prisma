@@ -432,14 +432,15 @@ model StockTransfer {
 }
 
 model Warehouse {
-  id          String    @id @default(cuid())
+  id          String           @id @default(cuid())
   name        String
   addressId   String?
-  address     Address?  @relation(fields: [addressId], references: [id])
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  suppliers   Supplier[]
+  address     Address?         @relation(fields: [addressId], references: [id])
+  inventory   InventoryItem[]  // Hinzugefügt: Gegenrelation zu InventoryItem
   transfers   StockTransfer[]
+  suppliers   Supplier[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
 }
 
 model Supplier {
@@ -843,20 +844,17 @@ enum MetricType {
 // Erweiterungen für Zahlungssystem
 
 model Payment {
-  id            String    @id @default(cuid())
-  orderId       String    @unique
-  order         Order     @relation(fields: [orderId], references: [id])
+  id            String        @id @default(cuid())
+  orderId       String       @unique
+  order         Order        @relation(fields: [orderId], references: [id])
   amount        Float
-  currency      String
-  provider      Provider
+  currency      String       @default("EUR")
   status        PaymentStatus
-  method        PaymentMethod
-  intentId      String?   // Payment Intent ID (Stripe etc.)
-  metadata      Json?     // Provider-spezifische Daten
-  errorMessage  String?
-  refundId      String?   // Bei Rückerstattungen
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  methodId      String       // Hinzugefügt: Foreign Key
+  method        PaymentMethod @relation(fields: [methodId], references: [id]) // Korrigierte Relation
+  intentId      String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
 }
 
 model PaymentMethod {
