@@ -40,69 +40,96 @@ model Session {
 }
 
 model User {
-  id              String    @id @default(cuid())
-  name            String?
-  email           String    @unique
-  emailVerified   DateTime?
-  image           String?
-  password        String
-  role            String   @default("user")
-  resetToken      String?
-  resetTokenExpiry DateTime?
-  permissions     Permission[]
-  metadata        UserMetadata[]
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id                    String                  @id @default(cuid())
+  email                 String                  @unique
+  name                  String?
+  comments              Comment[]
+  reports               Report[]
+  behaviors             UserBehavior[]
+  notifications         Notification[]
+  notificationPrefs     NotificationPreference[]
+  analyticsEvents       AnalyticsEvent[]
+  paymentMethods        PaymentMethod[]
+  affiliate             Affiliate?
+  emailVerified         DateTime?
+  image                 String?
+  password              String
+  role                  UserRole                @default(USER)
+  status                UserStatus              @default(ACTIVE)
+  resetToken            String?
+  resetTokenExpiry      DateTime?
+  permissions           Permission[]
+  metadata              UserMetadata[]
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
   
-  accounts        Account[]
-  sessions        Session[]
-  orders          Order[]
-  tradeInRequests TradeInRequest[]
-  reviews         Review[]
-  messages        TradeInMessage[]
+  accounts              Account[]
+  sessions              Session[]
+  orders                Order[]
+  tradeInRequests       TradeInRequest[]
+  reviews               Review[]
+  messages              TradeInMessage[]
 }
 
-enum Role {
-  USER
+enum UserRole {
   ADMIN
-  MANAGER
-  SUPPORT
+  STAFF
+  USER
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
 }
 
 model Product {
-  id          String   @id @default(cuid())
-  name        String
-  slug        String   @unique
-  description String
-  price       Float
-  images      Image[]
-  categoryId  String
-  brandId     String
-  condition   DeviceCondition
-  available   Boolean  @default(true)
-  featured    Boolean  @default(false)
-  specs       Json?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                    String          @id @default(cuid())
+  name                  String
+  slug                  String   @unique
+  description           String?
+  price                 Float
+  images                Image[]
+  categoryId            String
+  brandId               String
+  condition             DeviceCondition
+  available             Boolean  @default(true)
+  featured              Boolean  @default(false)
+  specs                 Json?
+  status                ProductStatus   @default(ACTIVE)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  inventory             InventoryItem[]
+  behaviors             UserBehavior[]
+  vector                ProductVector?
+  discounts             Discount[]
+  filterOptions         FilterOption[]
 
-  category    Category    @relation(fields: [categoryId], references: [id])
-  brand       Brand       @relation(fields: [brandId], references: [id])
-  orderItems  OrderItem[]
-  reviews     Review[]
+  category              Category    @relation(fields: [categoryId], references: [id])
+  brand                 Brand       @relation(fields: [brandId], references: [id])
+  orderItems            OrderItem[]
+  reviews               Review[]
+}
+
+enum ProductStatus {
+  ACTIVE
+  INACTIVE
+  DRAFT
 }
 
 model Category {
-  id          String   @id @default(cuid())
-  name        String
-  slug        String   @unique
-  description String?
-  parentId    String?
-  parent      Category? @relation("CategoryHierarchy", fields: [parentId], references: [id])
-  children    Category[] @relation("CategoryHierarchy")
-  products    Product[]
-  metadata    CategoryMetadata[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                    String      @id @default(cuid())
+  name                  String
+  slug                  String   @unique
+  description           String?
+  parentId              String?
+  parent                Category? @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children              Category[] @relation("CategoryHierarchy")
+  products              Product[]
+  metadata              CategoryMetadata[]
+  discounts             Discount[]
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 }
 
 model CategoryMetadata {
@@ -196,20 +223,24 @@ model Comment {
 }
 
 model Order {
-  id              String   @id @default(cuid())
-  userId          String
-  stripeSessionId String   @unique
-  total           Float
-  status          String   // PAID, PROCESSING, SHIPPED, DELIVERED
-  shippingAddress String   // JSON string
-  discountId      String?
-  discount        Discount?      @relation(fields: [discountId], references: [id])
-  subtotal        Float
-  discountAmount  Float         @default(0)
-  shippingCost    Float         @default(0)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  user            User     @relation(fields: [userId], references: [id])
+  id                    String       @id @default(cuid())
+  userId                String
+  stripeSessionId       String   @unique
+  total                 Float
+  status                OrderStatus @default(PENDING)
+  shippingAddress       String   // JSON string
+  discountId            String?
+  discount              Discount?      @relation(fields: [discountId], references: [id])
+  subtotal              Float
+  discountAmount        Float         @default(0)
+  shippingCost          Float         @default(0)
+  payments              Payment[]
+  referrals             Referral[]
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  user                  User       @relation(fields: [userId], references: [id])
+  items                 OrderItem[]
+  reviews               Review[]
 
   @@index([userId])
 }
@@ -225,12 +256,11 @@ model OrderItem {
 }
 
 enum OrderStatus {
-  pending
-  confirmed
-  processing
-  shipped
-  delivered
-  cancelled
+  PENDING
+  CONFIRMED
+  SHIPPED
+  DELIVERED
+  CANCELLED
 }
 
 enum ShippingMethod {
@@ -431,8 +461,8 @@ model InventoryItem {
   warehouseId String
   warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
   quantity    Int       @default(0)
-  minQuantity Int       @default(5)
-  maxQuantity Int?
+  minQuantity Int       @default(10)
+  maxQuantity Int       @default(100)
   location    String?   // Lagerort (z.B. "Regal A-123")
   movements   StockMovement[]
   createdAt   DateTime  @default(now())
@@ -833,17 +863,12 @@ model PaymentMethod {
   id            String    @id @default(cuid())
   userId        String
   user          User      @relation(fields: [userId], references: [id])
-  type          String    // credit_card, sepa, etc.
-  provider      Provider
-  tokenId       String    // Provider Token
-  last4         String?   // Letzte 4 Ziffern
-  expiryDate    String?   // MM/YY
-  isDefault     Boolean   @default(false)
-  metadata      Json?
+  type          String
+  payments      Payment[]
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  @@unique([userId, tokenId])
+  @@unique([userId, type])
 }
 
 enum Provider {
@@ -919,7 +944,6 @@ enum AffiliateStatus {
 enum ReferralStatus {
   PENDING
   APPROVED
-  REJECTED
   PAID
 }
 
