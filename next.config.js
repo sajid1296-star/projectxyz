@@ -5,9 +5,7 @@ const nextConfig = {
     domains: ['62.72.16.124']
   },
   experimental: {
-    serverActions: {
-      bodySizeLimit: '2mb'
-    }
+    serverActions: true
   },
   env: {
     APP_URL: process.env.APP_URL,
@@ -29,10 +27,7 @@ const nextConfig = {
       },
     ]
   },
-  server: {
-    hostname: '62.72.16.124',
-    port: 3000
-  }
+  output: 'standalone'
 };
 
 module.exports = nextConfig; 
