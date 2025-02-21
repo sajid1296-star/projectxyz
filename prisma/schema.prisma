@@ -1,0 +1,1034 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  id                String   @id @default(cuid())
+  userId            String
+  type             String
+  provider         String
+  providerAccountId String
+  refresh_token    String?  @db.Text
+  access_token     String?  @db.Text
+  expires_at       Int?
+  token_type       String?
+  scope            String?
+  id_token         String?  @db.Text
+  session_state    String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  id              String    @id @default(cuid())
+  name            String?
+  email           String    @unique
+  emailVerified   DateTime?
+  image           String?
+  password        String
+  role            String   @default("user")
+  resetToken      String?
+  resetTokenExpiry DateTime?
+  permissions     Permission[]
+  metadata        UserMetadata[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  accounts        Account[]
+  sessions        Session[]
+  orders          Order[]
+  tradeInRequests TradeInRequest[]
+  reviews         Review[]
+  messages        TradeInMessage[]
+}
+
+enum Role {
+  USER
+  ADMIN
+  MANAGER
+  SUPPORT
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String
+  price       Float
+  images      Image[]
+  categoryId  String
+  brandId     String
+  condition   DeviceCondition
+  available   Boolean  @default(true)
+  featured    Boolean  @default(false)
+  specs       Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  category    Category    @relation(fields: [categoryId], references: [id])
+  brand       Brand       @relation(fields: [brandId], references: [id])
+  orderItems  OrderItem[]
+  reviews     Review[]
+}
+
+model Category {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  parentId    String?
+  parent      Category? @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryHierarchy")
+  products    Product[]
+  metadata    CategoryMetadata[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model CategoryMetadata {
+  id         String   @id @default(cuid())
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  key        String
+  value      String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([categoryId, key])
+}
+
+model Brand {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  logo        String?
+  website     String?
+  products    Product[]
+  metadata    BrandMetadata[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model BrandMetadata {
+  id        String   @id @default(cuid())
+  brandId   String
+  brand     Brand    @relation(fields: [brandId], references: [id], onDelete: Cascade)
+  key       String
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([brandId, key])
+}
+
+model Image {
+  id        String   @id @default(cuid())
+  url       String
+  productId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model Review {
+  id          String    @id @default(cuid())
+  rating      Int       @default(0)
+  title       String?
+  content     String
+  status      ReviewStatus @default(PENDING)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  productId   String
+  product     Product   @relation(fields: [productId], references: [id])
+  orderId     String?
+  order       Order?    @relation(fields: [orderId], references: [id])
+  comments    Comment[]
+  helpful     Int       @default(0)
+  reported    Boolean   @default(false)
+  metadata    Json?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([userId, productId, orderId])
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  content   String
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  reviewId  String
+  review    Review   @relation(fields: [reviewId], references: [id])
+  parentId  String?
+  parent    Comment? @relation("CommentReplies", fields: [parentId], references: [id])
+  replies   Comment[] @relation("CommentReplies")
+  reported  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Order {
+  id              String   @id @default(cuid())
+  userId          String
+  stripeSessionId String   @unique
+  total           Float
+  status          String   // PAID, PROCESSING, SHIPPED, DELIVERED
+  shippingAddress String   // JSON string
+  discountId      String?
+  discount        Discount?      @relation(fields: [discountId], references: [id])
+  subtotal        Float
+  discountAmount  Float         @default(0)
+  shippingCost    Float         @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  user            User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  order     Order   @relation(fields: [orderId], references: [id])
+  orderId   String
+  product   Product @relation(fields: [productId], references: [id])
+  productId String
+  quantity  Int
+  price     Float
+}
+
+enum OrderStatus {
+  pending
+  confirmed
+  processing
+  shipped
+  delivered
+  cancelled
+}
+
+enum ShippingMethod {
+  standard
+  express
+}
+
+// Neue Modelle für das Trade-in System
+model TradeInRequest {
+  id          String         @id @default(cuid())
+  userId      String
+  deviceType  DeviceType
+  brand       String
+  model       String
+  condition   DeviceCondition
+  storage     String?
+  accessories String[]
+  description String?
+  status      TradeInStatus  @default(pending)
+  value       Float?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  user        User            @relation(fields: [userId], references: [id])
+  images      TradeInImage[]
+  messages    TradeInMessage[]
+}
+
+model TradeInImage {
+  id            String         @id @default(cuid())
+  url           String
+  requestId     String
+  createdAt     DateTime       @default(now())
+  
+  request       TradeInRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+}
+
+model TradeInMessage {
+  id            String         @id @default(cuid())
+  requestId     String
+  userId        String
+  message       String         @db.Text
+  isAdmin       Boolean        @default(false)
+  createdAt     DateTime       @default(now())
+
+  request       TradeInRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  user          User          @relation(fields: [userId], references: [id])
+}
+
+enum TradeInStatus {
+  pending
+  reviewing
+  offerMade
+  accepted
+  rejected
+  deviceReceived
+  completed
+  cancelled
+}
+
+enum DeviceType {
+  smartphone
+  tablet
+  laptop
+  smartwatch
+  other
+}
+
+enum DeviceCondition {
+  new
+  likeNew
+  good
+  fair
+  poor
+}
+
+model Settings {
+  id                    Int      @id @default(1)
+  siteName              String   @default("Mein Shop")
+  contactEmail         String   @default("kontakt@beispiel.de")
+  orderNotifications   Boolean  @default(true)
+  tradeInNotifications Boolean  @default(true)
+  maintenanceMode      Boolean  @default(false)
+  updatedAt            DateTime @updatedAt
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  users       User[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model UserMetadata {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key       String
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, key])
+}
+
+// Erweiterungen für Rabatte und Gutscheine
+
+model Discount {
+  id            String          @id @default(cuid())
+  code          String          @unique
+  type          DiscountType
+  value         Float
+  minPurchase   Float?
+  maxUses       Int?
+  usedCount     Int            @default(0)
+  startDate     DateTime
+  endDate       DateTime
+  status        DiscountStatus @default(ACTIVE)
+  conditions    Json?
+  categories    Category[]
+  products      Product[]
+  orders        Order[]
+  metadata      Json?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+  FREE_SHIPPING
+  BUY_X_GET_Y
+}
+
+enum DiscountStatus {
+  ACTIVE
+  INACTIVE
+  EXPIRED
+}
+
+// Erweiterungen für Lagerverwaltung
+
+model Warehouse {
+  id          String    @id @default(cuid())
+  name        String
+  address     Address?  @relation(fields: [addressId], references: [id])
+  addressId   String?   @unique
+  inventory   InventoryItem[]
+  suppliers   Supplier[]
+  transfers   StockTransfer[]
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model InventoryItem {
+  id          String    @id @default(cuid())
+  productId   String
+  product     Product   @relation(fields: [productId], references: [id])
+  warehouseId String
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  quantity    Int       @default(0)
+  minQuantity Int       @default(5)
+  maxQuantity Int?
+  location    String?   // Lagerort (z.B. "Regal A-123")
+  movements   StockMovement[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([productId, warehouseId])
+}
+
+model Supplier {
+  id          String    @id @default(cuid())
+  name        String
+  email       String?
+  phone       String?
+  address     Address?  @relation(fields: [addressId], references: [id])
+  addressId   String?   @unique
+  warehouses  Warehouse[]
+  orders      PurchaseOrder[]
+  products    Product[]
+  leadTime    Int?      // Durchschnittliche Lieferzeit in Tagen
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model PurchaseOrder {
+  id          String    @id @default(cuid())
+  supplierId  String
+  supplier    Supplier  @relation(fields: [supplierId], references: [id])
+  status      POStatus  @default(DRAFT)
+  items       PurchaseOrderItem[]
+  total       Float
+  expectedDate DateTime?
+  receivedDate DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+enum POStatus {
+  DRAFT
+  ORDERED
+  PARTIAL
+  COMPLETED
+  CANCELLED
+}
+
+model StockMovement {
+  id          String    @id @default(cuid())
+  itemId      String
+  item        InventoryItem @relation(fields: [itemId], references: [id])
+  quantity    Int
+  type        MovementType
+  reference   String?   // Bestellnummer, Lieferscheinnummer etc.
+  note        String?
+  createdAt   DateTime  @default(now())
+}
+
+enum MovementType {
+  PURCHASE
+  SALE
+  RETURN
+  ADJUSTMENT
+  TRANSFER
+  LOSS
+}
+
+// Erweiterungen für Reports und Analytics
+
+model Report {
+  id          String    @id @default(cuid())
+  name        String
+  type        ReportType
+  schedule    Schedule?
+  filters     Json?     // Gespeicherte Filtereinstellungen
+  recipients  String[]  // E-Mail-Empfänger für automatische Berichte
+  lastRun     DateTime?
+  createdBy   String
+  user        User      @relation(fields: [createdBy], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Schedule {
+  id          String    @id @default(cuid())
+  reportId    String    @unique
+  report      Report    @relation(fields: [reportId], references: [id])
+  frequency   Frequency
+  dayOfWeek   Int?      // 0-6 für wöchentliche Berichte
+  dayOfMonth  Int?      // 1-31 für monatliche Berichte
+  time        String    // HH:mm
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+enum ReportType {
+  SALES
+  INVENTORY
+  CUSTOMERS
+  PRODUCTS
+  FINANCIAL
+  CUSTOM
+}
+
+enum Frequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+}
+
+// Erweiterungen für SEO und Performance-Tracking
+
+model SEOMetadata {
+  id          String    @id @default(cuid())
+  path        String    @unique // URL-Pfad
+  title       String
+  description String
+  keywords    String[]
+  ogImage     String?
+  canonical   String?
+  noIndex     Boolean   @default(false)
+  structured  Json?     // Strukturierte Daten (JSON-LD)
+  performance Performance[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Performance {
+  id          String    @id @default(cuid())
+  path        String
+  metadata    SEOMetadata? @relation(fields: [metadataId], references: [id])
+  metadataId  String?
+  fcp         Float     // First Contentful Paint
+  lcp         Float     // Largest Contentful Paint
+  fid         Float     // First Input Delay
+  cls         Float     // Cumulative Layout Shift
+  ttfb        Float     // Time to First Byte
+  userAgent   String
+  device      String
+  connection  String?
+  timestamp   DateTime  @default(now())
+}
+
+model SEOSettings {
+  id            String    @id @default(cuid())
+  path          String    @unique // URL-Pfad
+  title         String    // Meta-Titel
+  description   String    // Meta-Beschreibung
+  keywords      String[]  // Meta-Keywords
+  canonical     String?   // Kanonische URL
+  robots        String?   // Robots-Direktiven
+  ogTitle       String?   // Open Graph Titel
+  ogDescription String?   // Open Graph Beschreibung
+  ogImage       String?   // Open Graph Bild
+  schema        Json?     // Strukturierte Daten
+  priority      Float     @default(0.5) // Sitemap-Priorität
+  changefreq    String    @default("weekly") // Sitemap-Frequenz
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Redirect {
+  id            String    @id @default(cuid())
+  source        String    @unique // Quell-URL
+  destination   String    // Ziel-URL
+  statusCode    Int       @default(301) // HTTP-Status
+  isRegex       Boolean   @default(false)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model SitemapConfig {
+  id            String    @id @default(cuid())
+  name          String    @unique // z.B. "products", "blog"
+  query         String    // SQL/Prisma Query
+  priority      Float     @default(0.5)
+  changefreq    String    @default("daily")
+  lastRun       DateTime?
+  isActive      Boolean   @default(true)
+}
+
+// Erweiterungen für Caching und CDN
+
+model CacheEntry {
+  id          String    @id @default(cuid())
+  key         String    @unique
+  value       Bytes     // Komprimierte Daten
+  type        CacheType
+  ttl         Int       // Time to live in Sekunden
+  hits        Int       @default(0)
+  size        Int       // Größe in Bytes
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model CDNAsset {
+  id          String    @id @default(cuid())
+  path        String    @unique
+  type        String    // MIME-Type
+  size        Int
+  hash        String    // Content-Hash
+  variants    Json?     // Bildvarianten, Formate etc.
+  metadata    Json?     // EXIF, Dimensionen etc.
+  uploaded    Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+enum CacheType {
+  PAGE
+  API
+  QUERY
+  IMAGE
+}
+
+// Erweiterungen für Suche und Filter
+
+model SearchIndex {
+  id          String    @id @default(cuid())
+  type        String    // products, categories, etc.
+  documentId  String    // ID des originalen Dokuments
+  content     Json      // Suchrelevante Daten
+  vector      Float[]   // Embedding für Vektorsuche
+  score       Float     // Relevanz-Score
+  lastIndexed DateTime  @default(now())
+
+  @@unique([type, documentId])
+}
+
+model FilterOption {
+  id          String    @id @default(cuid())
+  type        FilterType
+  key         String    // z.B. "color", "size"
+  value       String    // z.B. "red", "XL"
+  label       String    // Anzeigename
+  position    Int       @default(0)
+  active      Boolean   @default(true)
+  products    Product[]
+  metadata    Json?     // Zusätzliche Filterdaten
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([type, key, value])
+}
+
+enum FilterType {
+  CATEGORY
+  ATTRIBUTE
+  PRICE_RANGE
+  BRAND
+  RATING
+  AVAILABILITY
+  CUSTOM
+}
+
+// Erweiterungen für Empfehlungssystem
+
+model UserBehavior {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  productId   String
+  product     Product   @relation(fields: [productId], references: [id])
+  type        BehaviorType
+  timestamp   DateTime  @default(now())
+  metadata    Json?     // Zusätzliche Verhaltensdaten
+}
+
+model ProductVector {
+  id          String    @id @default(cuid())
+  productId   String    @unique
+  product     Product   @relation(fields: [productId], references: [id])
+  vector      Float[]   // Produktembedding für ML
+  categories  Float[]   // Kategorie-Features
+  attributes  Float[]   // Attribut-Features
+  updated     DateTime  @default(now())
+}
+
+model Recommendation {
+  id          String    @id @default(cuid())
+  sourceId    String    // Produkt oder User ID
+  targetId    String    // Empfohlenes Produkt ID
+  score       Float     // Ähnlichkeitsscore
+  type        RecommendationType
+  metadata    Json?     // Zusätzliche Empfehlungsdaten
+  createdAt   DateTime  @default(now())
+
+  @@unique([sourceId, targetId, type])
+}
+
+enum BehaviorType {
+  VIEW
+  CART
+  PURCHASE
+  WISHLIST
+  REVIEW
+}
+
+enum RecommendationType {
+  SIMILAR_PRODUCTS
+  FREQUENTLY_BOUGHT_TOGETHER
+  PERSONALIZED
+  TRENDING
+}
+
+// Erweiterungen für A/B Testing
+
+model Experiment {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  description String?
+  status      ExperimentStatus @default(DRAFT)
+  type        ExperimentType
+  variants    Variant[]
+  metrics     Metric[]
+  startDate   DateTime?
+  endDate     DateTime?
+  targetSize  Int       @default(100) // Prozent der Nutzer
+  conditions  Json?     // Targeting-Bedingungen
+  results     Result[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Variant {
+  id          String    @id @default(cuid())
+  name        String
+  experimentId String
+  experiment  Experiment @relation(fields: [experimentId], references: [id])
+  config      Json      // Varianten-Konfiguration
+  weight      Int       @default(50) // Verteilungsgewicht
+  results     Result[]
+}
+
+model Metric {
+  id          String    @id @default(cuid())
+  name        String
+  experimentId String
+  experiment  Experiment @relation(fields: [experimentId], references: [id])
+  type        MetricType
+  goal        Float?    // Zielvorgabe
+  results     Result[]
+}
+
+model Result {
+  id          String    @id @default(cuid())
+  experimentId String
+  experiment  Experiment @relation(fields: [experimentId], references: [id])
+  variantId   String
+  variant     Variant    @relation(fields: [variantId], references: [id])
+  metricId    String
+  metric      Metric     @relation(fields: [metricId], references: [id])
+  value       Float
+  userId      String?
+  timestamp   DateTime   @default(now())
+
+  @@unique([experimentId, variantId, metricId, userId])
+}
+
+enum ExperimentStatus {
+  DRAFT
+  RUNNING
+  PAUSED
+  COMPLETED
+  ARCHIVED
+}
+
+enum ExperimentType {
+  UI
+  FEATURE
+  PRICING
+  CONTENT
+  ALGORITHM
+}
+
+enum MetricType {
+  CONVERSION
+  REVENUE
+  ENGAGEMENT
+  PERFORMANCE
+  CUSTOM
+}
+
+// Erweiterungen für Zahlungssystem
+
+model Payment {
+  id            String    @id @default(cuid())
+  orderId       String    @unique
+  order         Order     @relation(fields: [orderId], references: [id])
+  amount        Float
+  currency      String
+  provider      Provider
+  status        PaymentStatus
+  method        PaymentMethod
+  intentId      String?   // Payment Intent ID (Stripe etc.)
+  metadata      Json?     // Provider-spezifische Daten
+  errorMessage  String?
+  refundId      String?   // Bei Rückerstattungen
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model PaymentMethod {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+  type          String    // credit_card, sepa, etc.
+  provider      Provider
+  tokenId       String    // Provider Token
+  last4         String?   // Letzte 4 Ziffern
+  expiryDate    String?   // MM/YY
+  isDefault     Boolean   @default(false)
+  metadata      Json?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([userId, tokenId])
+}
+
+enum Provider {
+  STRIPE
+  PAYPAL
+  KLARNA
+  SOFORT
+  CUSTOM
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
+  CANCELLED
+}
+
+// Erweiterungen für Affiliate-System
+
+model Affiliate {
+  id            String    @id @default(cuid())
+  userId        String    @unique
+  user          User      @relation(fields: [userId], references: [id])
+  code          String    @unique
+  name          String?
+  website       String?
+  commission    Float     // Provisionssatz in Prozent
+  balance       Float     @default(0)
+  status        AffiliateStatus @default(PENDING)
+  referrals     Referral[]
+  payouts       Payout[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Referral {
+  id            String    @id @default(cuid())
+  affiliateId   String
+  affiliate     Affiliate @relation(fields: [affiliateId], references: [id])
+  orderId       String    @unique
+  order         Order     @relation(fields: [orderId], references: [id])
+  commission    Float     // Berechnete Provision
+  status        ReferralStatus @default(PENDING)
+  paidAt        DateTime?
+  payoutId      String?
+  payout        Payout?   @relation(fields: [payoutId], references: [id])
+  createdAt     DateTime  @default(now())
+}
+
+model Payout {
+  id            String    @id @default(cuid())
+  affiliateId   String
+  affiliate     Affiliate @relation(fields: [affiliateId], references: [id])
+  amount        Float
+  method        PayoutMethod
+  status        PayoutStatus @default(PENDING)
+  referrals     Referral[]
+  bankAccount   String?
+  paypalEmail   String?
+  processedAt   DateTime?
+  createdAt     DateTime  @default(now())
+}
+
+enum AffiliateStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  TERMINATED
+}
+
+enum ReferralStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PAID
+}
+
+enum PayoutStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum PayoutMethod {
+  BANK_TRANSFER
+  PAYPAL
+  CRYPTO
+}
+
+// Erweiterungen für Benachrichtigungssystem
+
+model Notification {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  type        NotificationType
+  title       String
+  message     String
+  data        Json?     // Zusätzliche Daten
+  priority    Priority  @default(NORMAL)
+  status      NotificationStatus @default(UNREAD)
+  readAt      DateTime?
+  expiresAt   DateTime?
+  channels    Channel[] // Email, Push, etc.
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model NotificationPreference {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id])
+  type        NotificationType
+  channels    Channel[]
+  enabled     Boolean   @default(true)
+  schedule    Json?     // Zeitplan für Benachrichtigungen
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([userId, type])
+}
+
+model NotificationTemplate {
+  id          String    @id @default(cuid())
+  type        NotificationType
+  name        String    @unique
+  subject     String
+  content     String    // Handlebars Template
+  html        String?   // HTML Version
+  variables   Json      // Verfügbare Variablen
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+enum NotificationType {
+  ORDER_STATUS
+  PAYMENT_CONFIRMATION
+  SHIPPING_UPDATE
+  PRICE_ALERT
+  STOCK_ALERT
+  SECURITY_ALERT
+  NEWSLETTER
+  MARKETING
+  SYSTEM
+}
+
+enum Priority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum NotificationStatus {
+  UNREAD
+  READ
+  ARCHIVED
+  DELETED
+}
+
+enum Channel {
+  EMAIL
+  PUSH
+  SMS
+  IN_APP
+  WEBHOOK
+}
+
+// Erweiterungen für Analytics-System
+
+model AnalyticsEvent {
+  id          String    @id @default(cuid())
+  type        String    // pageview, click, purchase, etc.
+  userId      String?
+  user        User?     @relation(fields: [userId], references: [id])
+  sessionId   String
+  path        String
+  referrer    String?
+  userAgent   String?
+  device      String?
+  browser     String?
+  os          String?
+  ip          String?
+  data        Json?     // Event-spezifische Daten
+  timestamp   DateTime  @default(now())
+
+  @@index([type, timestamp])
+  @@index([userId, timestamp])
+  @@index([sessionId, timestamp])
+}
+
+model AnalyticsMetric {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  value       Float
+  dimensions  Json?     // Zusätzliche Dimensionen
+  timestamp   DateTime  @default(now())
+
+  @@index([name, timestamp])
+}
+
+model AnalyticsReport {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  type        ReportType
+  metrics     String[]  // Liste der Metriken
+  dimensions  String[]  // Gruppierungsdimensionen
+  filters     Json?     // Filterkriterien
+  schedule    String?   // Cron-Expression
+  recipients  String[]  // Email-Adressen
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
